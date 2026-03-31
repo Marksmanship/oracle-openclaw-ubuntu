@@ -88,7 +88,7 @@ variable "region" {
 
 variable "ssh_public_key" {
   description = "SSH public key for accessing the Ubuntu instances."
-  nullable    = false
+  nullable    = true
   type        = string
 }
 
