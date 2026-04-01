@@ -110,75 +110,15 @@ locals {
 
   controlplane_cloud_init = <<-EOF
     #!/bin/bash
-    set -euo pipefail
+    echo "Waiting for network connectivity..."
+    until ping -c1 8.8.8.8 &>/dev/null; do
+      sleep 2
+    done
+    echo "Network is up!"
 
-    export DEBIAN_FRONTEND=noninteractive
+    # 2. Force IPv4 (Optional but recommended to avoid IPv6 'unreachable' errors)
+    echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
 
-    # Disable swap
-    swapoff -a
-    sed -i '/ swap / s/^/#/' /etc/fstab
-
-    # Load required kernel modules
-    cat > /etc/modules-load.d/k8s.conf <<MODULES
-    overlayss
-    br_netfilter
-    MODULES
-    modprobe overlay
-    modprobe br_netfilter
-
-    # Sysctl settings for Kubernetes networking
-    cat > /etc/sysctl.d/k8s.conf <<SYSCTL
-    net.bridge.bridge-nf-call-iptables  = 1
-    net.bridge.bridge-nf-call-ip6tables = 1
-    net.ipv4.ip_forward                 = 1
-    net.core.rmem_max                   = 2500000
-    net.core.wmem_max                   = 2500000
-    SYSCTL
-    sysctl --system
-
-    # Install containerd
-    apt-get update
-    apt-get install -y apt-transport-https ca-certificates curl gnupg containerd
-
-    mkdir -p /etc/containerd
-    containerd config default > /etc/containerd/config.toml
-    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-    systemctl restart containerd
-    systemctl enable containerd
-
-    # Install kubeadm, kubelet, kubectl
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
-    apt-get update
-    apt-get install -y kubelet kubeadm kubectl
-    apt-mark hold kubelet kubeadm kubectl
-    systemctl enable kubelet
-
-    sudo cloud-init clean
-		sudo reboot
-    sudo kubeadm reset -f
-    sudo apt update
-    sudo apt install -y conntrack
-
-    # Initialize the cluster
-    kubeadm init \
-      --control-plane-endpoint="${local.cluster_endpoint}:6443" \
-      --pod-network-cidr=10.244.0.0/16 \
-      --upload-certs
-
-    # Set up kubeconfig for ubuntu user
-    mkdir -p /home/ubuntu/.kube
-    cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-    chown -R ubuntu:ubuntu /home/ubuntu/.kube
-
-    # Generate and save join command for workers
-    kubeadm token create --print-join-command > /home/ubuntu/join-command.sh
-    chmod 600 /home/ubuntu/join-command.sh
-    chown ubuntu:ubuntu /home/ubuntu/join-command.sh
-  EOF
-
-  worker_cloud_init = <<-EOF
-    #!/bin/bash
     set -euo pipefail
 
     export DEBIAN_FRONTEND=noninteractive
@@ -219,20 +159,86 @@ locals {
     curl -fsSL https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
     apt-get update
+    apt-get install -y conntrack
     apt-get install -y kubelet kubeadm kubectl
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
 
-    sudo cloud-init clean
-		sudo reboot
-    sudo kubeadm reset -f
-    sudo apt update
-    sudo apt install -y conntrack
+    # Initialize the cluster
+    kubeadm init \
+      --control-plane-endpoint="${local.cluster_endpoint}:6443" \
+      --pod-network-cidr=10.244.0.0/16 \
+      --upload-certs
+
+    # Set up kubeconfig for ubuntu user
+    mkdir -p /home/ubuntu/.kube
+    cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+    chown -R ubuntu:ubuntu /home/ubuntu/.kube
+
+    # Generate and save join command for workers
+    kubeadm token create --print-join-command > /home/ubuntu/join-command.sh
+    chmod 600 /home/ubuntu/join-command.sh
+    chown ubuntu:ubuntu /home/ubuntu/join-command.sh
+  EOF
+
+  worker_cloud_init = <<-EOF
+    #!/bin/bash
+    echo "Waiting for network connectivity..."
+    until ping -c1 8.8.8.8 &>/dev/null; do
+      sleep 2
+    done
+    echo "Network is up!"
+
+    # 2. Force IPv4 (Optional but recommended to avoid IPv6 'unreachable' errors)
+    echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+    set -euo pipefail
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Disable swap
+    swapoff -a
+    sed -i '/ swap / s/^/#/' /etc/fstab
+
+    # Load required kernel modules
+    cat > /etc/modules-load.d/k8s.conf <<MODULES
+    overlay
+    br_netfilter
+    MODULES
+    modprobe overlay
+    modprobe br_netfilter
+
+    # Sysctl settings for Kubernetes networking
+    cat > /etc/sysctl.d/k8s.conf <<SYSCTL
+    net.bridge.bridge-nf-call-iptables  = 1
+    net.bridge.bridge-nf-call-ip6tables = 1
+    net.ipv4.ip_forward                 = 1
+    net.core.rmem_max                   = 2500000
+    net.core.wmem_max                   = 2500000
+    SYSCTL
+    sysctl --system
+
+    # Install containerd
+    apt-get update
+    apt-get install -y apt-transport-https ca-certificates curl gnupg containerd
+
+    mkdir -p /etc/containerd
+    containerd config default > /etc/containerd/config.toml
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+    systemctl restart containerd
+    systemctl enable containerd
+
+    # Install kubeadm, kubelet, kubectl
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+    apt-get update
+    apt-get install -y conntrack
+    apt-get install -y kubelet kubeadm kubectl
+    apt-mark hold kubelet kubeadm kubectl
+    systemctl enable kubelet
 
     # The worker will need to join the cluster manually after the control plane is ready.
     # SSH into the control plane, get the join command from /home/ubuntu/join-command.sh,
-    # then run it on this worker node. First, you need to make sure the worker node's init
-    # process works
+    # then run it on this worker node.
   EOF
 }
 
@@ -245,6 +251,6 @@ module "oci_compute" {
   controlplane_user_data = local.controlplane_cloud_init
   nlb_id                 = oci_network_load_balancer_network_load_balancer.k8s_nlb.id
   ssh_public_key         = var.ssh_public_key
-  subnet_id              = module.oci_vcn.subnet_all_attributes["public"]["id"]  # 
+  subnet_id              = module.oci_vcn.subnet_all_attributes["public"]["id"]
   worker_user_data       = local.worker_cloud_init
 }
