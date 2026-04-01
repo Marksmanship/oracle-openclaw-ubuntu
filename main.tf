@@ -120,7 +120,7 @@ locals {
 
     # Load required kernel modules
     cat > /etc/modules-load.d/k8s.conf <<MODULES
-    overlay
+    overlayss
     br_netfilter
     MODULES
     modprobe overlay
@@ -153,6 +153,9 @@ locals {
     apt-get install -y kubelet kubeadm kubectl
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
+
+    apt-get update
+    apt-get install -y conntrack
 
     # Initialize the cluster
     kubeadm init \
@@ -217,9 +220,13 @@ locals {
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
 
+    apt-get update
+    apt-get install -y conntrack
+
     # The worker will need to join the cluster manually after the control plane is ready.
     # SSH into the control plane, get the join command from /home/ubuntu/join-command.sh,
-    # then run it on this worker node.
+    # then run it on this worker node. First, you need to make sure the worker node's init
+    # process works
   EOF
 }
 
@@ -232,6 +239,6 @@ module "oci_compute" {
   controlplane_user_data = local.controlplane_cloud_init
   nlb_id                 = oci_network_load_balancer_network_load_balancer.k8s_nlb.id
   ssh_public_key         = var.ssh_public_key
-  subnet_id              = module.oci_vcn.subnet_all_attributes["public"]["id"]
+  subnet_id              = module.oci_vcn.subnet_all_attributes["public"]["id"]  # 
   worker_user_data       = local.worker_cloud_init
 }
