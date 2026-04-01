@@ -232,6 +232,6 @@ module "oci_compute" {
   controlplane_user_data = local.controlplane_cloud_init
   nlb_id                 = oci_network_load_balancer_network_load_balancer.k8s_nlb.id
   ssh_public_key         = var.ssh_public_key
-  subnet_id              = module.oci_vcn.subnet_all_attributes["private"]["id"]
+  subnet_id              = module.oci_vcn.subnet_all_attributes["public"]["id"]
   worker_user_data       = local.worker_cloud_init
 }
