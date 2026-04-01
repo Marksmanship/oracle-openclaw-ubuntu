@@ -34,6 +34,7 @@ module "controlplane_instance_group" {
   shape                       = "VM.Standard.A1.Flex"
   source_ocid                 = var.arm64_image_id
   ssh_public_keys             = var.ssh_public_key
+  public_ip                   = "EPHEMERAL"
   subnet_ocids                = [var.subnet_id]
   user_data                   = base64encode(var.controlplane_user_data)
 
