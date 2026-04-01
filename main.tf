@@ -154,9 +154,11 @@ locals {
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
 
-    kubeadm reset -f
-    apt update
-    apt install -y conntrack
+    sudo cloud-init clean
+		sudo reboot
+    sudo kubeadm reset -f
+    sudo apt update
+    sudo apt install -y conntrack
 
     # Initialize the cluster
     kubeadm init \
@@ -221,9 +223,11 @@ locals {
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
 
-    kubeadm reset -f
-    apt update
-    apt install -y conntrack
+    sudo cloud-init clean
+		sudo reboot
+    sudo kubeadm reset -f
+    sudo apt update
+    sudo apt install -y conntrack
 
     # The worker will need to join the cluster manually after the control plane is ready.
     # SSH into the control plane, get the join command from /home/ubuntu/join-command.sh,
