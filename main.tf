@@ -20,16 +20,19 @@ module "oci_vcn" {
       cidr_block = "10.0.0.0/24"
       name       = var.public_subnet_name
       type       = "public"
+      security_list_ids = [oci_core_security_list.controlplane_security_list.id]
     }
     private = {
       cidr_block = "10.0.1.0/24"
       name       = var.private_subnet_name
       type       = "private"
+      security_list_ids = [oci_core_security_list.worker_security_list.id]
     }
     nlb = {
       cidr_block = "10.0.2.0/28"
       name       = var.nlb_subnet_name
       type       = "public"
+      security_list_ids = [oci_core_security_list.nlb_security_list.id]
     }
   }
 }
@@ -84,12 +87,122 @@ resource "oci_core_default_security_list" "default_security_list" {
   }
 
   ingress_security_rules {
-    protocol = 6
+    protocol = 6 # TCP
     source   = "0.0.0.0/0"
 
     tcp_options {
       max = 30000
       min = 30000
+    }
+  }
+}
+
+resource "oci_core_security_list" "nlb_security_list" {
+  compartment_id = oci_identity_compartment.compartment.id
+  vcn_id = module.oci_vcn.vcn_id
+  display_name = "nlb-security-list"
+
+  egress_security_rules {
+    description = "To send traffic to the nodes"
+    destination = "10.0.0.0/16"
+    protocol    = 6
+
+    tcp_options { # to specify particular destination ports for TCP rules
+      max = 6443
+      min = 6443
+    }
+  }
+
+  ingress_security_rules {
+    description = "Subnet only exists to receive internet traffic and pass it to your nodes"
+    protocol = 6
+    source   = "0.0.0.0/0"
+
+    tcp_options {
+      max = 6443
+      min = 6443
+    }
+  }
+}
+
+resource "oci_core_security_list" "worker_security_list" {
+  compartment_id = oci_identity_compartment.compartment.id
+  vcn_id = module.oci_vcn.vcn_id
+  display_name = "worker-security-list"
+
+  egress_security_rules {
+    description = "To reaach the NAT gateway for updates"
+    destination = "0.0.0.0/0"
+    protocol    = "All"
+  }
+
+  ingress_security_rules {
+    description = "Allows ControlPlane to manage the worker and Pod-to-Pod communication via Cilium"
+    protocol = "All"
+    source   = "10.0.0.0/16"
+  }
+
+  ingress_security_rules {
+    description = "Cilium VXLAN tunnel - All of your local ips accross the subnets"
+    protocol = 6
+    source   = "10.0.0.0/16"
+
+    tcp_options {
+      max = 8472
+      min = 8472
+    }
+  }
+}
+
+resource "oci_core_security_list" "controlplane_security_list" {
+  compartment_id = oci_identity_compartment.compartment.id
+  vcn_id = module.oci_vcn.vcn_id
+  display_name = "controlplane-security-list"
+
+  egress_security_rules {
+    description = "Allows the node to reach the internet/worker nodes"
+    destination = "0.0.0.0/0"
+    protocol    = "All"
+  }
+
+  ingress_security_rules {
+    description = "Allows the NLB health checks and traffic in"
+    protocol = 6
+    source   = "10.0.2.0/28"
+
+    tcp_options {
+      max = 6443
+      min = 6443
+    }
+  }
+  ingress_security_rules {
+    description = "Allows wWorker node to talk to the API"
+    protocol = 6
+    source   = "10.0.0.0/16"
+  }
+  ingress_security_rules {
+    description = "For your SSH access"
+    protocol = 6
+    source   = "${var.personal_ip}/32"
+
+    tcp_options {
+      max = 22
+      min = 22
+    }
+  }
+  ingress_security_rules {
+    description = "Allow incoming traffic from worker node during kubeadm join"
+    protocol = "All"
+    source   = "10.0.1.0/24"
+  }
+  ingress_security_rules {
+    description = "Allow kubelet on worker node to connect"
+    protocol = 6
+    source   = "10.0.1.0/24"
+
+    tcp_options {
+      max = 10250
+      min = 10250
     }
   }
 }
@@ -248,7 +361,7 @@ locals {
 }
 
 module "oci_compute" {
-  source = "./modules/oci_compute"
+  source = "./modules/oci_compute" # means it must provide values for all variables listed in the "variables" fileof the specified folder directory (so vairables.tf in oci_compute)
 
   ad_number              = var.ad_number
   arm64_image_id         = module.oci_ubuntu_image.arm64_image_id
@@ -258,5 +371,6 @@ module "oci_compute" {
   ssh_public_key         = var.ssh_public_key
   public_subnet_id       = module.oci_vcn.subnet_all_attributes["public"]["id"]
   private_subnet_id      = module.oci_vcn.subnet_all_attributes["private"]["id"]
+  # nlb_subnet already used in oci_network_load_balancer_network_load_balancer
   worker_user_data       = local.worker_cloud_init
 }
