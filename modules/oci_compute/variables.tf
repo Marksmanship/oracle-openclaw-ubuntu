@@ -30,7 +30,12 @@ variable "ssh_public_key" {
   type        = string
 }
 
-variable "subnet_id" {
+variable "public_subnet_id" {
+  description = "The private subnet id"
+  type        = string
+}
+
+variable "private_subnet_id" {
   description = "The private subnet id"
   type        = string
 }

@@ -74,6 +74,12 @@ variable "private_subnet_name" {
   type        = string
 }
 
+variable "nlb_subnet_name" {
+  default     = "nlb"
+  description = "The name of the nlb subnet."
+  type        = string
+}
+
 variable "public_subnet_name" {
   default     = "public"
   description = "The name of the public subnet."

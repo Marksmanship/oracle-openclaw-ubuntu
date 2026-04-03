@@ -26,6 +26,11 @@ module "oci_vcn" {
       name       = var.private_subnet_name
       type       = "private"
     }
+    nlb = {
+      cidr_block = "10.0.2.0/28"
+      name       = var.nlb_subnet_name
+      type       = "public"
+    }
   }
 }
 
@@ -100,7 +105,7 @@ resource "oci_network_load_balancer_network_load_balancer" "k8s_nlb" {
   compartment_id = oci_identity_compartment.compartment.id
   display_name   = "k8s-nlb"
   is_private     = false
-  subnet_id      = module.oci_vcn.subnet_all_attributes["public"]["id"]
+  subnet_id      = module.oci_vcn.subnet_all_attributes["nlb"]["id"]
 }
 
 locals {
@@ -251,6 +256,7 @@ module "oci_compute" {
   controlplane_user_data = local.controlplane_cloud_init
   nlb_id                 = oci_network_load_balancer_network_load_balancer.k8s_nlb.id
   ssh_public_key         = var.ssh_public_key
-  subnet_id              = module.oci_vcn.subnet_all_attributes["public"]["id"]
+  public_subnet_id       = module.oci_vcn.subnet_all_attributes["public"]["id"]
+  private_subnet_id      = module.oci_vcn.subnet_all_attributes["private"]["id"]
   worker_user_data       = local.worker_cloud_init
 }

@@ -5,7 +5,7 @@ resource "oci_network_load_balancer_backend_set" "controlplane" {
   policy                   = "FIVE_TUPLE"
 
   health_checker {
-    protocol           = "HTTPS"
+    protocol           = "TCP"
     port               = 6443
     url_path           = "/readyz"
     return_code        = 401
@@ -35,7 +35,7 @@ module "controlplane_instance_group" {
   source_ocid                 = var.arm64_image_id
   ssh_public_keys             = var.ssh_public_key
   public_ip                   = "EPHEMERAL"
-  subnet_ocids                = [var.subnet_id]
+  subnet_ocids                = [var.public_subnet_id]
   user_data                   = base64encode(var.controlplane_user_data)
 
   cloud_agent_plugins = {
@@ -66,7 +66,7 @@ module "worker_instance_group" {
   shape                       = "VM.Standard.A1.Flex"
   source_ocid                 = var.arm64_image_id
   ssh_public_keys             = var.ssh_public_key
-  subnet_ocids                = [var.subnet_id]
+  subnet_ocids                = [var.private_subnet_id]
   user_data                   = base64encode(var.worker_user_data)
 
   cloud_agent_plugins = {
