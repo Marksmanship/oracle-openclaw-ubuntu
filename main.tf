@@ -228,14 +228,39 @@ locals {
 
   controlplane_cloud_init = <<-EOF
     #!/bin/bash
+
+    # Wait until network is up so that this entire script doesn't fail
     echo "Waiting for network connectivity..."
     until ping -c1 8.8.8.8 &>/dev/null; do
       sleep 2
     done
     echo "Network is up!"
 
-    # 2. Force IPv4 (Optional but recommended to avoid IPv6 'unreachable' errors)
+    # Force IPv4 (Optional but recommended to avoid IPv6 'unreachable' errors)
     echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
+    # Once we've proven we've restarted this script but are now the ubuntu user, try to initialize kubeadm
+    TARGET_USER="ubuntu"
+    if [[ "$USER" == "$TARGET_USER" ]]; then
+
+      # Initialize the cluster
+      kubeadm init \
+        --control-plane-endpoint="${local.cluster_endpoint}:6443" \
+        --pod-network-cidr=10.244.0.0/16 \
+        --upload-certs
+
+      # Set up kubeconfig for ubuntu user
+      mkdir -p /home/ubuntu/.kube
+      cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+      sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
+
+      # Generate and save join command for workers
+      kubeadm token create --print-join-command > /home/ubuntu/join-command.sh
+      sudo chmod 600 /home/ubuntu/join-command.sh
+      sudo chown ubuntu:ubuntu /home/ubuntu/join-command.sh
+
+      exit 1
+    fi
 
     set -euo pipefail
 
@@ -287,22 +312,6 @@ locals {
       echo "Restarting script and logging in as $TARGET_USER..."
       exec sudo -u "$TARGET_USER" "$0" "$@"
     fi
-
-    # Initialize the cluster
-    kubeadm init \
-      --control-plane-endpoint="${local.cluster_endpoint}:6443" \
-      --pod-network-cidr=10.244.0.0/16 \
-      --upload-certs
-
-    # Set up kubeconfig for ubuntu user
-    mkdir -p /home/ubuntu/.kube
-    cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-    sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
-
-    # Generate and save join command for workers
-    kubeadm token create --print-join-command > /home/ubuntu/join-command.sh
-    sudo chmod 600 /home/ubuntu/join-command.sh
-    sudo chown ubuntu:ubuntu /home/ubuntu/join-command.sh
   EOF
 
   worker_cloud_init = <<-EOF
