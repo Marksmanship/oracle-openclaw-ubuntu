@@ -229,7 +229,7 @@ locals {
   controlplane_cloud_init = <<-EOF
     #!/bin/bash
 
-    # Wait until network is up so that this entire script doesn't fail
+    # Wait until the network is setup so that this script doesn't immediately fail
     echo "Waiting for network connectivity..."
     until ping -c1 8.8.8.8 &>/dev/null; do
       sleep 2
@@ -238,29 +238,6 @@ locals {
 
     # Force IPv4 (Optional but recommended to avoid IPv6 'unreachable' errors)
     echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
-
-    # Once we've proven we've restarted this script but are now the ubuntu user, try to initialize kubeadm
-    TARGET_USER="ubuntu"
-    if [[ "$USER" == "$TARGET_USER" ]]; then
-
-      # Initialize the cluster
-      kubeadm init \
-        --control-plane-endpoint="${local.cluster_endpoint}:6443" \
-        --pod-network-cidr=10.244.0.0/16 \
-        --upload-certs
-
-      # Set up kubeconfig for ubuntu user
-      mkdir -p /home/ubuntu/.kube
-      cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-      sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
-
-      # Generate and save join command for workers
-      kubeadm token create --print-join-command > /home/ubuntu/join-command.sh
-      sudo chmod 600 /home/ubuntu/join-command.sh
-      sudo chown ubuntu:ubuntu /home/ubuntu/join-command.sh
-
-      exit 1
-    fi
 
     set -euo pipefail
 
@@ -307,11 +284,24 @@ locals {
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
 
-    TARGET_USER="ubuntu"
-    if [[ "$USER" != "$TARGET_USER" ]]; then
-      echo "Restarting script and logging in as $TARGET_USER..."
-      exec sudo -u "$TARGET_USER" "$0" "$@"
-    fi
+    # Make the ubuntu .kube dir
+    mkdir /home/ubuntu/.kube/
+
+    # Initialize the cluster and output logs to console and file
+    kubeadm init \
+      --control-plane-endpoint="${local.cluster_endpoint}:6443" \
+      --pod-network-cidr=10.244.0.0/16 \
+      --upload-certs \
+      2>&1 | tee /home/ubuntu/.kube/join-command.sh
+    
+    # Copy results of successful init to a file in .kube dir
+    cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+
+    # Give the owner of the file read and write perms (but not execute perms/700)
+    chmod 600 /home/ubuntu/.kube/join-command.sh
+
+    # Make the new owner Ubuntu
+    chown -R ubuntu:ubuntu /home/ubuntu/.kube
   EOF
 
   worker_cloud_init = <<-EOF
