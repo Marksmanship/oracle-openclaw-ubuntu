@@ -282,6 +282,12 @@ locals {
     apt-mark hold kubelet kubeadm kubectl
     systemctl enable kubelet
 
+    TARGET_USER="ubuntu"
+    if [[ "$USER" != "$TARGET_USER" ]]; then
+      echo "Restarting script and logging in as $TARGET_USER..."
+      exec sudo -u "$TARGET_USER" "$0" "$@"
+    fi
+
     # Initialize the cluster
     kubeadm init \
       --control-plane-endpoint="${local.cluster_endpoint}:6443" \
@@ -291,12 +297,12 @@ locals {
     # Set up kubeconfig for ubuntu user
     mkdir -p /home/ubuntu/.kube
     cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-    chown -R ubuntu:ubuntu /home/ubuntu/.kube
+    sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube
 
     # Generate and save join command for workers
     kubeadm token create --print-join-command > /home/ubuntu/join-command.sh
-    chmod 600 /home/ubuntu/join-command.sh
-    chown ubuntu:ubuntu /home/ubuntu/join-command.sh
+    sudo chmod 600 /home/ubuntu/join-command.sh
+    sudo chown ubuntu:ubuntu /home/ubuntu/join-command.sh
   EOF
 
   worker_cloud_init = <<-EOF
