@@ -275,6 +275,10 @@ locals {
     systemctl restart containerd
     systemctl enable containerd
 
+    # Hardcoding the cidr range of NLB but this 
+    iptables -I INPUT 1 -p tcp -s 10.0.2.0/28 --dport 6443 -j ACCEPT
+    sudo netfilter-persistent save
+
     # Install kubeadm, kubelet, kubectl
     curl -fsSL https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
     echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${var.kubernetes_version}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
@@ -293,6 +297,9 @@ locals {
       --pod-network-cidr=10.244.0.0/16 \
       --upload-certs \
       2>&1 | tee /home/ubuntu/.kube/join-command.sh
+    
+    # Give perms to ubuntu first before moving (didn't work other way around)
+    chown ubuntu:ubuntu /etc/kubernetes/admin.conf
     
     # Copy results of successful init to a file in .kube dir
     cp /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
